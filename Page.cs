@@ -27,7 +27,7 @@ namespace SpiderEngineX
         public string Title
         {
             get
-            {
+            { 
                 var title = this.Find("title").Html();
                 return HttpUtility.HtmlDecode(title);
             }
@@ -42,6 +42,16 @@ namespace SpiderEngineX
             : base(html)
         {
             this.Address = address;
+        }
+
+        /// <summary>
+        /// html解码
+        /// </summary>
+        /// <param name="html">html</param>
+        /// <returns></returns>
+        public static string HtmlDecode(string html)
+        {
+            return HttpUtility.HtmlDecode(html);
         }
 
         /// <summary>

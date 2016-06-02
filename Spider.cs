@@ -105,7 +105,7 @@ namespace SpiderEngineX
             this.hashSet.Clear();
             this.Progress.Reset();
 
-            await this.SpiderAddress(address, cancellationToken);
+            await this.SpiderAddressAsync(address, cancellationToken);
         }
 
 
@@ -115,15 +115,25 @@ namespace SpiderEngineX
         /// <param name="address">页面地址</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private async Task SpiderAddress(Uri address, CancellationToken cancellationToken)
+        private async Task SpiderAddressAsync(Uri address, CancellationToken cancellationToken)
         {
             try
             {
                 this.Progress.RaiseCreateOne();
                 using (var response = await this.httpClient.GetAsync(address, cancellationToken))
                 {
+                    response.EnsureSuccessStatusCode();
                     this.Progress.RaiseCompleteOne();
-                    await this.ProcessResponseAsync(response, address, cancellationToken);
+
+                    var html = await this.ReadStringContentAsync(response);
+                    var page = new Page(html, address);
+
+                    var tasks = this.GetPageLinks(page)
+                        .Select(item => page.GetAbsoluteUri(item))
+                        .Where(item => item != null && this.IsNotRepeat(item))
+                        .Select(item => this.SpiderAddressAsync(item, cancellationToken));
+
+                    await Task.WhenAll(tasks);
                 }
             }
             catch (Exception ex)
@@ -135,48 +145,11 @@ namespace SpiderEngineX
 
 
         /// <summary>
-        /// 处理回复内容
-        /// </summary>     
-        /// <param name="response">回复</param>
-        /// <param name="address">地址</param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        private async Task ProcessResponseAsync(HttpResponseMessage response, Uri address, CancellationToken cancellationToken)
-        {
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
-                var html = await this.GetStringContentAsync(response);
-                var page = new Page(html, address);
-
-                var tasks = this.GetPageLinks(page)
-                    .Select(item => page.GetAbsoluteUri(item))
-                    .Where(item => item != null && this.IsNotRepeat(item))
-                    .Select(item => this.SpiderAddress(item, cancellationToken));
-
-                await Task.WhenAll(tasks);
-            }
-        }
-
-        /// <summary>
-        /// 检测页面是否没被爬虫过
-        /// </summary>
-        /// <param name="address">地址</param>
-        /// <returns></returns>
-        private bool IsNotRepeat(Uri address)
-        {
-            lock (this.hashSync)
-            {
-                return this.hashSet.Add(address.ToString());
-            }
-        }
-
-
-        /// <summary>
-        /// 获取回复对象的文本内容
+        /// 读取回复对象的文本内容
         /// </summary>
         /// <param name="response">回复</param>
         /// <returns></returns>
-        private async Task<string> GetStringContentAsync(HttpResponseMessage response)
+        private async Task<string> ReadStringContentAsync(HttpResponseMessage response)
         {
             string contentType = null;
             IEnumerable<string> contentTypeValues = null;
@@ -240,6 +213,21 @@ namespace SpiderEngineX
 
 
         /// <summary>
+        /// 检测页面是否没被爬虫过
+        /// </summary>
+        /// <param name="address">地址</param>
+        /// <returns></returns>
+        private bool IsNotRepeat(Uri address)
+        {
+            lock (this.hashSync)
+            {
+                return this.hashSet.Add(address.ToString());
+            }
+        }
+
+
+
+        /// <summary>
         /// 获取页面的链接
         /// </summary>
         /// <param name="page">页面</param>
@@ -261,6 +249,26 @@ namespace SpiderEngineX
         protected virtual void OnException(Uri address, Exception ex)
         {
         }
+
+
+        /// <summary>
+        /// Get请求获取一个页面的html文本
+        /// </summary>
+        /// <param name="address">页面地址</param>
+        /// <returns></returns>
+        protected async Task<PageResult> GetPageResultAsync(Uri address)
+        {
+            using (var response = await this.httpClient.GetAsync(address))
+            {
+                var html = string.Empty;
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    html = await this.ReadStringContentAsync(response);
+                }
+                return new PageResult(address, html, response.StatusCode);
+            }
+        }
+
 
         /// <summary>
         /// 释放资源
