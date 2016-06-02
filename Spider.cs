@@ -212,7 +212,7 @@ namespace SpiderEngineX
         /// <returns></returns>
         private Encoding FindEncoding(string content)
         {
-            if (content != null)
+            if (content == null)
             {
                 return null;
             }
