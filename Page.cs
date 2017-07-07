@@ -1,6 +1,7 @@
 ﻿using CsQuery;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text;
@@ -13,6 +14,7 @@ namespace SpiderEngineX
     /// <summary>
     /// 表示Html页面
     /// </summary>
+    [DebuggerDisplay("{Address}")]
     public sealed class Page : CQ
     {
         /// <summary>
@@ -21,13 +23,18 @@ namespace SpiderEngineX
         public Uri Address { get; private set; }
 
         /// <summary>
+        /// 获取html内容
+        /// </summary>
+        public string Html { get; private set; }
+
+        /// <summary>
         /// 获取标题
         /// </summary>
         /// <returns></returns>
         public string Title
         {
             get
-            { 
+            {
                 var title = this.Find("title").Html();
                 return HttpUtility.HtmlDecode(title);
             }
@@ -41,6 +48,7 @@ namespace SpiderEngineX
         internal Page(string html, Uri address)
             : base(html)
         {
+            this.Html = html;
             this.Address = address;
         }
 
@@ -62,12 +70,15 @@ namespace SpiderEngineX
         /// <returns></returns>
         public Uri GetAbsoluteUri(string link)
         {
+            if (link == null)
+            {
+                return null;
+            }
             Uri uri = null;
             Uri.TryCreate(this.Address, link, out uri);
             return uri;
         }
 
-        /// <summary>
         /// <summary>
         /// 链接地址转换为绝对地址
         /// 失败则返回null
@@ -76,6 +87,10 @@ namespace SpiderEngineX
         /// <returns></returns>
         public Uri GetAbsoluteUri(Uri link)
         {
+            if (link == null)
+            {
+                return null;
+            }
             Uri uri = null;
             Uri.TryCreate(this.Address, link, out uri);
             return uri;
@@ -87,7 +102,7 @@ namespace SpiderEngineX
         /// <returns></returns>
         public override string ToString()
         {
-            return this.Address.ToString();
+            return this.Html;
         }
     }
 }

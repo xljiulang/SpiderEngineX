@@ -33,8 +33,9 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="CsQuery">
-      <HintPath>..\packages\CsQueryLaster.1.3.5.200\lib\CsQuery.dll</HintPath>
+    <Reference Include="CsQuery, Version=1.3.5.200, Culture=neutral, PublicKeyToken=ab50af63106f043f, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>packages\CsQueryLaster.1.3.5.200\lib\CsQuery.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -49,8 +50,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Page.cs" />
-    <Compile Include="PageResult.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="UrlHistory.cs" />
     <Compile Include="Spider.cs" />
     <Compile Include="Progress.cs" />
   </ItemGroup>

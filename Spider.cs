@@ -12,24 +12,14 @@ using System.Threading.Tasks;
 namespace SpiderEngineX
 {
     /// <summary>
-    /// 表示网络爬虫
+    /// 表示网络爬虫抽象类
     /// </summary>
-    public class Spider : WebRequestHandler
+    public abstract class Spider : WebRequestHandler
     {
         /// <summary>
         /// http客户端
         /// </summary>
         private readonly HttpClient httpClient;
-
-        /// <summary>
-        /// 同步锁
-        /// </summary>
-        private readonly object hashSync = new object();
-
-        /// <summary>
-        /// 记录已爬的页面
-        /// </summary>
-        private readonly HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 
         /// <summary>
@@ -53,6 +43,11 @@ namespace SpiderEngineX
         public IDictionary<string, string> DefaultRequestHeaders { get; private set; }
 
         /// <summary>
+        /// 获取爬虫地址记录
+        /// </summary>
+        public UrlHistory History { get; private set; }
+
+        /// <summary>
         /// 网络爬虫
         /// </summary>
         public Spider()
@@ -63,27 +58,28 @@ namespace SpiderEngineX
             this.DefaultConnectionLimit = 1024;
             this.ServerCertificateValidationCallback = (a, b, c, d) => true;
             this.DefaultRequestHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            this.History = new UrlHistory();
         }
 
         /// <summary>
         /// 启动爬虫任务
         /// </summary>
-        /// <param name="address">站点地址</param>
+        /// <param name="siteUrl">站点地址</param>
         /// <exception cref="NotSupportedException"></exception>
         /// <returns></returns>
-        public async Task RunAsync(Uri address)
+        public async Task RunAsync(Uri siteUrl)
         {
-            await this.RunAsync(address, default(CancellationToken));
+            await this.RunAsync(siteUrl, default(CancellationToken));
         }
 
         /// <summary>
         /// 启动爬虫任务
         /// </summary>
-        /// <param name="address">站点地址</param>
+        /// <param name="siteUrl">站点地址</param>
         /// <param name="cancellationToken"></param>
         /// <exception cref="NotSupportedException"></exception>
         /// <returns></returns>
-        public virtual async Task RunAsync(Uri address, CancellationToken cancellationToken)
+        public async Task RunAsync(Uri siteUrl, CancellationToken cancellationToken)
         {
             if (this.Progress.UnComplete > 0L)
             {
@@ -102,44 +98,81 @@ namespace SpiderEngineX
                 this.httpClient.DefaultRequestHeaders.Add(kv.Key, kv.Value);
             }
 
-            this.hashSet.Clear();
+            this.History.Clear();
             this.Progress.Reset();
 
-            await this.SpiderAddressAsync(address, cancellationToken);
+            await this.SpideAsync(siteUrl, cancellationToken);
         }
 
 
         /// <summary>
-        /// 爬虫一个页面
+        /// 递归爬虫页面
         /// </summary>
-        /// <param name="address">页面地址</param>
+        /// <param name="url">页面地址</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private async Task SpiderAddressAsync(Uri address, CancellationToken cancellationToken)
+        private async Task SpideAsync(Uri url, CancellationToken cancellationToken)
         {
+            var page = await this.TrySpideUrlAsync(url, cancellationToken);
+            if (page == null)
+            {
+                return;
+            }
+
+            var children = from link in this.FindPageSubLinks(page)
+                           let absUrl = page.GetAbsoluteUri(link)
+                           select this.SpideAsync(absUrl, cancellationToken);
+
+            await Task.WhenAll(children);
+        }
+
+        /// <summary>
+        /// 尝试爬虫一个页面
+        /// </summary>
+        /// <param name="url">页面地址</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        private async Task<Page> TrySpideUrlAsync(Uri url, CancellationToken cancellationToken)
+        {
+            if (url == null)
+            {
+                return null;
+            }
+
+            if (this.History.Add(url.ToString()) == false)
+            {
+                return null;
+            }
+
             try
             {
                 this.Progress.RaiseCreateOne();
-                using (var response = await this.httpClient.GetAsync(address, cancellationToken))
-                {
-                    response.EnsureSuccessStatusCode();
-                    this.Progress.RaiseCompleteOne();
-
-                    var html = await this.ReadStringContentAsync(response);
-                    var page = new Page(html, address);
-
-                    var tasks = this.GetPageLinks(page)
-                        .Select(item => page.GetAbsoluteUri(item))
-                        .Where(item => item != null && this.IsNotRepeat(item))
-                        .Select(item => this.SpiderAddressAsync(item, cancellationToken));
-
-                    await Task.WhenAll(tasks);
-                }
+                var page = await this.SpideUrlAsync(url, cancellationToken);
+                this.Progress.RaiseCompleteOne();
+                this.OnSpidedPage(page);
+                return page;
             }
             catch (Exception ex)
             {
                 this.Progress.RaiseCompleteOne();
-                this.OnException(address, ex);
+                this.OnException(url, ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 尝试爬虫一个页面
+        /// </summary>
+        /// <param name="url">页面地址</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        private async Task<Page> SpideUrlAsync(Uri url, CancellationToken cancellationToken)
+        {
+            using (var response = await this.httpClient.GetAsync(url, cancellationToken))
+            {
+                response.EnsureSuccessStatusCode();
+                var html = await this.ReadStringContentAsync(response);
+                return new Page(html, url);
             }
         }
 
@@ -211,34 +244,34 @@ namespace SpiderEngineX
             }
         }
 
-
         /// <summary>
-        /// 检测页面是否没被爬虫过
+        /// 爬完一个页面
         /// </summary>
-        /// <param name="address">地址</param>
-        /// <returns></returns>
-        private bool IsNotRepeat(Uri address)
-        {
-            lock (this.hashSync)
-            {
-                return this.hashSet.Add(address.ToString());
-            }
-        }
-
+        /// <param name="page">页面</param>
+        protected abstract void OnSpidedPage(Page page);
 
 
         /// <summary>
-        /// 获取页面的链接
+        /// 查找页面内的链接
+        /// 这些链接将用于继续爬虫
         /// </summary>
         /// <param name="page">页面</param>
         /// <returns></returns>
-        protected virtual IEnumerable<Uri> GetPageLinks(Page page)
+        protected virtual IEnumerable<Uri> FindPageSubLinks(Page page)
         {
-            return page
-                   .Find("a")
-                   .Select(a => a.GetAttribute("href"))
-                   .Select(href => page.GetAbsoluteUri(href))
-                   .Where(item => item != null);
+            try
+            {
+                return page
+                       .Find("a")
+                       .Select(a => a.GetAttribute("href"))
+                       .Select(href => page.GetAbsoluteUri(href))
+                       .Where(item => item != null);
+            }
+            catch (Exception ex)
+            {
+                this.OnException(page.Address, ex);
+                return Enumerable.Empty<Uri>();
+            }
         }
 
         /// <summary>
@@ -249,26 +282,6 @@ namespace SpiderEngineX
         protected virtual void OnException(Uri address, Exception ex)
         {
         }
-
-
-        /// <summary>
-        /// Get请求获取一个页面的html文本
-        /// </summary>
-        /// <param name="address">页面地址</param>
-        /// <returns></returns>
-        protected async Task<PageResult> GetPageResultAsync(Uri address)
-        {
-            using (var response = await this.httpClient.GetAsync(address))
-            {
-                var html = string.Empty;
-                if (response.StatusCode == HttpStatusCode.OK)
-                {
-                    html = await this.ReadStringContentAsync(response);
-                }
-                return new PageResult(address, html, response.StatusCode);
-            }
-        }
-
 
         /// <summary>
         /// 释放资源
