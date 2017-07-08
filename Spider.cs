@@ -119,9 +119,10 @@ namespace SpiderEngineX
                 return;
             }
 
-            var children = from link in this.FindPageSubLinks(page)
-                           let absUrl = page.GetAbsoluteUri(link)
-                           select this.SpideAsync(absUrl, cancellationToken);
+            var children =
+                from link in this.FindHrefs(page)
+                let absUrl = page.GetAbsoluteUri(link)
+                select this.SpideAsync(absUrl, cancellationToken);
 
             await Task.WhenAll(children);
         }
@@ -147,10 +148,16 @@ namespace SpiderEngineX
             try
             {
                 this.Progress.RaiseCreateOne();
-                var page = await this.SpideUrlAsync(url, cancellationToken);
-                this.Progress.RaiseCompleteOne();
-                this.OnSpidedPage(page);
-                return page;
+                using (var response = await this.httpClient.GetAsync(url, cancellationToken))
+                {
+                    response.EnsureSuccessStatusCode();
+                    var html = await response.ReadStringContentAsync();
+                    var page = new Page(html, url);
+
+                    this.Progress.RaiseCompleteOne();
+                    this.OnSpideCompleted(page);
+                    return page;
+                }
             }
             catch (Exception ex)
             {
@@ -160,95 +167,12 @@ namespace SpiderEngineX
             }
         }
 
-        /// <summary>
-        /// 尝试爬虫一个页面
-        /// </summary>
-        /// <param name="url">页面地址</param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        private async Task<Page> SpideUrlAsync(Uri url, CancellationToken cancellationToken)
-        {
-            using (var response = await this.httpClient.GetAsync(url, cancellationToken))
-            {
-                response.EnsureSuccessStatusCode();
-                var html = await this.ReadStringContentAsync(response);
-                return new Page(html, url);
-            }
-        }
-
-
-        /// <summary>
-        /// 读取回复对象的文本内容
-        /// </summary>
-        /// <param name="response">回复</param>
-        /// <returns></returns>
-        private async Task<string> ReadStringContentAsync(HttpResponseMessage response)
-        {
-            string contentType = null;
-            IEnumerable<string> contentTypeValues = null;
-            if (response.Headers.TryGetValues("Content-Type", out contentTypeValues))
-            {
-                contentType = contentTypeValues.LastOrDefault();
-            }
-
-            var byteContent = await response.Content.ReadAsByteArrayAsync();
-            var encoding = this.FindEncoding(contentType);
-            if (encoding != null)
-            {
-                return encoding.GetString(byteContent);
-            }
-
-            var html = Encoding.UTF8.GetString(byteContent);
-            encoding = this.FindEncoding(html);
-
-            if (encoding == null || encoding == Encoding.UTF8)
-            {
-                return html;
-            }
-            else
-            {
-                return encoding.GetString(byteContent);
-            }
-        }
-
-        /// <summary>
-        /// 查找编码
-        /// </summary>
-        /// <param name="content">内容</param>
-        /// <returns></returns>
-        private Encoding FindEncoding(string content)
-        {
-            if (content == null)
-            {
-                return null;
-            }
-
-            var match = Regex.Match(content, "(?<=charset=\"*)(\\w|-)+", RegexOptions.IgnoreCase);
-            if (match.Success == false)
-            {
-                return null;
-            }
-
-            var chartSet = match.Value;
-            var encoding = Encoding
-                .GetEncodings()
-                .FirstOrDefault(item => item.Name.Equals(chartSet, StringComparison.OrdinalIgnoreCase));
-
-            if (encoding != null)
-            {
-                return encoding.GetEncoding();
-            }
-            else
-            {
-                return null;
-            }
-        }
 
         /// <summary>
         /// 爬完一个页面
         /// </summary>
         /// <param name="page">页面</param>
-        protected abstract void OnSpidedPage(Page page);
+        protected abstract void OnSpideCompleted(Page page);
 
 
         /// <summary>
@@ -257,22 +181,8 @@ namespace SpiderEngineX
         /// </summary>
         /// <param name="page">页面</param>
         /// <returns></returns>
-        protected virtual IEnumerable<Uri> FindPageSubLinks(Page page)
-        {
-            try
-            {
-                return page
-                       .Find("a")
-                       .Select(a => a.GetAttribute("href"))
-                       .Select(href => page.GetAbsoluteUri(href))
-                       .Where(item => item != null);
-            }
-            catch (Exception ex)
-            {
-                this.OnException(page.Address, ex);
-                return Enumerable.Empty<Uri>();
-            }
-        }
+        protected abstract IEnumerable<Uri> FindHrefs(Page page);
+
 
         /// <summary>
         /// 异常时

@@ -14,18 +14,18 @@ namespace SpiderEngineX
     /// <summary>
     /// 表示Html页面
     /// </summary>
-    [DebuggerDisplay("{Address}")]
+    [DebuggerDisplay("{Url}")]
     public sealed class Page : CQ
     {
         /// <summary>
         /// 获取页面地址
         /// </summary>
-        public Uri Address { get; private set; }
+        public Uri Url { get; private set; }
 
         /// <summary>
         /// 获取html内容
         /// </summary>
-        public string Html { get; private set; }
+        public string HtmlContent { get; private set; }
 
         /// <summary>
         /// 获取标题
@@ -43,13 +43,13 @@ namespace SpiderEngineX
         /// <summary>
         /// 页面
         /// </summary>
-        /// <param name="address">地址</param>    
-        /// <param name="option">爬虫选项</param>
-        internal Page(string html, Uri address)
+        /// <param name="url">地址</param>    
+        /// <param name="html">html内容</param>
+        internal Page(string html, Uri url)
             : base(html)
         {
-            this.Html = html;
-            this.Address = address;
+            this.HtmlContent = html;
+            this.Url = url;
         }
 
         /// <summary>
@@ -66,16 +66,16 @@ namespace SpiderEngineX
         /// 链接地址转换为绝对地址
         /// 失败则返回null
         /// </summary>
-        /// <param name="link">链接</param>
+        /// <param name="href">链接</param>
         /// <returns></returns>
-        public Uri GetAbsoluteUri(string link)
+        public Uri GetAbsoluteUri(string href)
         {
-            if (link == null)
+            if (href == null)
             {
                 return null;
             }
             Uri uri = null;
-            Uri.TryCreate(this.Address, link, out uri);
+            Uri.TryCreate(this.Url, href, out uri);
             return uri;
         }
 
@@ -83,17 +83,31 @@ namespace SpiderEngineX
         /// 链接地址转换为绝对地址
         /// 失败则返回null
         /// </summary>
-        /// <param name="link">链接</param>
+        /// <param name="href">链接</param>
         /// <returns></returns>
-        public Uri GetAbsoluteUri(Uri link)
+        public Uri GetAbsoluteUri(Uri href)
         {
-            if (link == null)
+            if (href == null)
             {
                 return null;
             }
             Uri uri = null;
-            Uri.TryCreate(this.Address, link, out uri);
+            Uri.TryCreate(this.Url, href, out uri);
             return uri;
+        }
+
+        /// <summary>
+        /// 查找页面内的a标签的链接        
+        /// </summary>
+        /// <param name="page">页面</param>
+        /// <returns></returns>
+        public IEnumerable<Uri> FindAllHrefs()
+        {
+            return from a in this.Find("a")
+                   let href = a.GetAttribute("href")
+                   let url = this.GetAbsoluteUri(href)
+                   where url != null
+                   select url;
         }
 
         /// <summary>
@@ -102,7 +116,7 @@ namespace SpiderEngineX
         /// <returns></returns>
         public override string ToString()
         {
-            return this.Html;
+            return this.HtmlContent;
         }
     }
 }

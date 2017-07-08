@@ -62,7 +62,7 @@ namespace SpiderEngineX
         /// <summary>
         /// 重置
         /// </summary>
-        internal void Reset()
+        public void Reset()
         {
             this.created = 0L;
             this.completion = 0L;
