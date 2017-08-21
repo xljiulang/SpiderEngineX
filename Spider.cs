@@ -98,9 +98,7 @@ namespace SpiderEngineX
                 this.httpClient.DefaultRequestHeaders.Add(kv.Key, kv.Value);
             }
 
-            this.History.Clear();
             this.Progress.Reset();
-
             await this.SpideAsync(siteUrl, cancellationToken);
         }
 
