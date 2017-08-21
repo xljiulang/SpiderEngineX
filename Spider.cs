@@ -145,9 +145,11 @@ namespace SpiderEngineX
                 return null;
             }
 
+            var raiseComplete = false;
+            this.Progress.RaiseCreateOne();
+
             try
             {
-                this.Progress.RaiseCreateOne();
                 using (var response = await this.httpClient.GetAsync(url, cancellationToken))
                 {
                     response.EnsureSuccessStatusCode();
@@ -155,13 +157,18 @@ namespace SpiderEngineX
                     var page = new Page(html, url);
 
                     this.Progress.RaiseCompleteOne();
+                    raiseComplete = true;
+
                     this.OnSpideCompleted(page);
                     return page;
                 }
             }
             catch (Exception ex)
             {
-                this.Progress.RaiseCompleteOne();
+                if (raiseComplete == false)
+                {
+                    this.Progress.RaiseCompleteOne();
+                }
                 this.OnException(url, ex);
                 return null;
             }
